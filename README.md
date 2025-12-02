@@ -207,6 +207,80 @@ Percentile calculation provides insights into security-driven reallocation patte
 
 <img width="1200" height="276" alt="image" src="https://github.com/user-attachments/assets/5afd113f-3d52-4f53-8394-4cc7b7ffa391" />
 
+#### Query 02: Average deposit count & amount per customer
+
+Deposit behavior is aggregated per customer, then averaged.
+
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:6b8258d35855473794164b2d88dfea52)
+* SQL code
+
+<img width="1200" height="377" alt="image" src="https://github.com/user-attachments/assets/93a3520d-a777-4215-b471-85bdb9ff1601" />
+
+* Query results
+
+<img width="1200" height="160" alt="image" src="https://github.com/user-attachments/assets/b9dbfbb0-003e-4151-8308-3914de4aa8d5" />
+
+#### Query 03: Monthly customers with >1 deposit AND ≥1 purchase/withdrawal
+
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:49df1453294d4f1d89d3e4da3c62993c)
+* SQL code
+
+<img width="1200" height="397" alt="image" src="https://github.com/user-attachments/assets/ef2198ca-d4ed-45ff-8510-13206c0e6693" />
+
+* Query results
+
+<img width="1200" height="256" alt="image" src="https://github.com/user-attachments/assets/0f70181f-40ff-4238-ae15-e8a77530c26a" />
+
+#### Query 04: Monthly closing balance
+
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:3bc153f8c8a8446b9062f4c2a6d89527)
+* SQL code
+
+```ruby
+WITH ordered_tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,txn_type
+    ,txn_amount
+    ,CASE
+      WHEN txn_type = 'deposit' THEN txn_amount
+      ELSE -txn_amount
+    END AS amount_adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(amount_adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM ordered_tx
+),
+month_end AS (
+  SELECT
+    customer_id
+    ,DATE_TRUNC(txn_date, MONTH) AS month
+    ,LAST_VALUE(running_balance) OVER (
+      PARTITION BY customer_id, DATE_TRUNC(txn_date, MONTH)
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS closing_balance
+  FROM running
+)
+SELECT DISTINCT *
+FROM month_end
+ORDER BY customer_id, month
+;
+```
+
+* Query results
+
+<img width="1327" height="486" alt="image" src="https://github.com/user-attachments/assets/b74938db-ca88-44e3-8c21-10dffc817417" />
+
 #### Query 01: How many unique nodes are there?
 
 [Link to code]()
@@ -226,10 +300,13 @@ Percentile calculation provides insights into security-driven reallocation patte
 
 
 
+#### Query 01: How many unique nodes are there?
+
+[Link to code]()
+* SQL code
 
 
-
-
+* Query results
 
 
 
