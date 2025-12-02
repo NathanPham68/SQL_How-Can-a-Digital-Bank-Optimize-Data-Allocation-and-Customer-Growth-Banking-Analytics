@@ -1,4 +1,4 @@
-# SQL_xBank
+# [SQL] How Can a Digital Bank Optimize Data Allocation and Customer Growth? — Banking Analytics
 
 <img width="1200" height="675" alt="image" src="https://github.com/user-attachments/assets/681b56b7-05c2-4cbb-a626-c3db43660e89" />
 
@@ -281,37 +281,327 @@ ORDER BY customer_id, month
 
 <img width="1327" height="486" alt="image" src="https://github.com/user-attachments/assets/b74938db-ca88-44e3-8c21-10dffc817417" />
 
-#### Query 01: How many unique nodes are there?
+#### Query 05: Percentage of customers whose balance grew >5%
 
-[Link to code]()
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:be1dea841bdc471dbd39514b577cbb3b)
 * SQL code
 
+```ruby
+WITH ordered_tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,txn_type
+    ,txn_amount
+    ,CASE
+      WHEN txn_type = 'deposit' THEN txn_amount
+      ELSE -txn_amount
+    END AS amount_adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(amount_adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM ordered_tx
+),
+month_end AS (
+  SELECT
+    customer_id
+    ,DATE_TRUNC(txn_date, MONTH) AS month
+    ,LAST_VALUE(running_balance) OVER (
+      PARTITION BY customer_id, DATE_TRUNC(txn_date, MONTH)
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS closing_balance
+  FROM running
+),
+mb AS (
+  SELECT DISTINCT customer_id, month, closing_balance
+  FROM month_end
+),
+growth AS (
+  SELECT
+    customer_id
+    ,month
+    ,closing_balance
+    ,LAG(closing_balance) OVER (PARTITION BY customer_id ORDER BY month) AS prev_balance
+  FROM mb
+)
+SELECT
+  COUNTIF(closing_balance > prev_balance * 1.05) / COUNT(*) AS pct_increased
+FROM growth
+;
+```
 
 * Query results
 
+<img width="1200" height="171" alt="image" src="https://github.com/user-attachments/assets/4724f89a-e5a5-4b64-9874-263017364f8c" />
 
-#### Query 01: How many unique nodes are there?
+### 🅒 Data Allocation Challenge (Options 1–3)
 
-[Link to code]()
+#### Query 01 (Op 1): Previous month closing balance
+
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:c1226121700343d4b64c32f16cb70c25)
 * SQL code
 
+```ruby
+WITH tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,CASE WHEN txn_type = 'deposit' THEN txn_amount ELSE -txn_amount END AS adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM tx
+)
+
+SELECT
+  customer_id
+  ,DATE_TRUNC(txn_date, MONTH) AS month
+  ,LAST_VALUE(running_balance) OVER (
+    PARTITION BY customer_id, DATE_TRUNC(txn_date, MONTH)
+    ORDER BY txn_date
+    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+  ) AS closing_balance
+FROM running
+;
+```
 
 * Query results
 
+<img width="1200" height="478" alt="image" src="https://github.com/user-attachments/assets/ea8af0db-6c29-4303-b1e5-c5713d6e7e56" />
 
+#### Query 02 (Op 2): 30-day average balance
 
-#### Query 01: How many unique nodes are there?
-
-[Link to code]()
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:06f652a6dbe94d0f90d852beeccd5cfe)
 * SQL code
 
+```ruby
+WITH tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,CASE WHEN txn_type = 'deposit' THEN txn_amount ELSE -txn_amount END AS adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM tx
+)
+
+SELECT
+  customer_id
+  ,txn_date
+  ,AVG(running_balance) OVER (
+    PARTITION BY customer_id
+    ORDER BY txn_date
+    ROWS BETWEEN 30 PRECEDING AND CURRENT ROW
+  ) AS avg_30d_balance
+FROM running
+;
+```
 
 * Query results
 
+<img width="1200" height="510" alt="image" src="https://github.com/user-attachments/assets/d4a45551-62e0-4bae-8231-6a5adbdae1d6" />
 
+#### Query 03 (Op 3): Real-time balance
 
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:80151ed089e948b283a7b48b801a27c7)
+* SQL code
 
+```ruby
+WITH tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,CASE WHEN txn_type = 'deposit' THEN txn_amount ELSE -txn_amount END AS adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM tx
+)
 
+SELECT
+  customer_id
+  ,txn_date
+  ,running_balance AS realtime_balance
+FROM running
+;
+```
 
+* Query results
 
+<img width="1200" height="567" alt="image" src="https://github.com/user-attachments/assets/6853b68b-6902-44e6-8b44-72e37e5d7f75" />
 
+### 🅓 Extra Challenge — Daily Interest Allocation
+
+#### Query 01: Simple interest (no compounding)
+
+Interest = balance * daily rate.
+
+No compounding → simple proportional growth.
+
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:f4ead3ac4b344e3ebbb53d4d4d0c7694)
+* SQL code
+
+```ruby
+WITH tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,CASE WHEN txn_type = 'deposit' THEN txn_amount ELSE -txn_amount END AS adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM tx
+),
+
+days AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,running_balance
+    ,DATE(txn_date) AS day
+  FROM running
+),
+daily_interest AS (
+  SELECT
+    customer_id
+    ,day
+    ,running_balance * (0.06 / 365) AS daily_interest
+  FROM days
+)
+
+SELECT
+  di.customer_id
+  ,DATE_TRUNC(di.day, MONTH) AS month
+  ,SUM(di.daily_interest) AS monthly_interest
+FROM daily_interest AS di
+GROUP BY di.customer_id, month
+ORDER BY di.customer_id, month
+;
+```
+
+* Query results
+
+<img width="1200" height="544" alt="image" src="https://github.com/user-attachments/assets/db6585d4-a23f-4247-83e4-86cd6bbe4389" />
+
+#### Query 02: How many unique nodes are there?
+
+[Link to code](https://console.cloud.google.com/bigquery?sq=322729696559:1d9201f0837248d4b658f057b5df709c)
+* SQL code
+
+```ruby
+WITH tx AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,CASE WHEN txn_type = 'deposit' THEN txn_amount ELSE -txn_amount END AS adj
+  FROM academic-arcade-452814-b8.Data_bank.customer_transactions
+),
+running AS (
+  SELECT
+    customer_id
+    ,txn_date
+    ,SUM(adj) OVER (
+      PARTITION BY customer_id
+      ORDER BY txn_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_balance
+  FROM tx
+),
+
+day_sequence AS (
+  SELECT
+    customer_id,
+    txn_date,
+    running_balance,
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY txn_date) AS day_num
+  FROM running
+),
+compound AS (
+  SELECT
+    customer_id,
+    txn_date,
+    running_balance,
+    POW(1 + 0.06/365, day_num) * running_balance - running_balance AS compounded_interest
+  FROM day_sequence
+)
+SELECT
+  customer_id,
+  DATE_TRUNC(txn_date, MONTH) AS month,
+  SUM(compounded_interest) AS monthly_compounded_interest
+FROM compound
+GROUP BY customer_id, month
+;
+```
+
+* Query results
+
+<img width="1200" height="570" alt="image" src="https://github.com/user-attachments/assets/62cf68b3-c233-4d83-8aab-67c185fa940a" />
+
+## V. Conclusion
+
+📌 Security & Node Management Insights (for investors)
+
+* Data Bank reallocates customers frequently, reducing hacking attack windows.
+
+* Median reallocation duration shows strong security rotation cycles.
+
+* Nodes are globally distributed across 5 regions → enabling redundancy & resilience.
+
+* Customer allocation is evenly distributed, preventing regional overload.
+
+📌 Data Provisioning Summary (for executives)
+
+| Option                                | Description         | Pros                                          | Cons                                 |
+| ------------------------------------- | ------------------- | --------------------------------------------- | ------------------------------------ |
+| **1. Previous Month Closing Balance** | Simple & stable     | Predictable provisioning                      | Slower to adjust to customer changes |
+| **2. 30-Day Average Balance**         | Smoothed workload   | More accurate reflection of customer activity | Heavy calculation                    |
+| **3. Real-Time Balance**              | Most accurate       | Real-time processing                          | Requires largest compute capacity    |
+| **4. Daily-Interest Based**           | Incentivizes saving | Attractive to customers                       | Complex + costly                     |
+
+📌 Recommendation
+
+💡 Option 2 (30-day average) provides the best balance between accuracy and computational efficiency.
+
+Option 3 is accurate but too costly; Option 1 is low accuracy; Option 4 is best for marketing but expensive.
